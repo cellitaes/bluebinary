@@ -1,0 +1,95 @@
+version: '3.9'
+
+services:
+  # Redis service for distributed coordination
+  redis:
+    image: redis:7-alpine
+    container_name: bluebinary-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - bluebinary-network
+
+  # Development node (port 3050)
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bluebinary-dev
+    ports:
+      - '3050:3050'
+    environment:
+      - NODE_ENV=dev
+      - PORT=3050
+      - NODE_ID=dev-node-1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATA_PATH=/app/data/dev
+    volumes:
+      - ./data/dev:/app/data/dev
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - bluebinary-network
+
+  # # Production node (port 3051)
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bluebinary-prod
+    ports:
+      - '3051:3051'
+    environment:
+      - NODE_ENV=prod
+      - PORT=3051
+      - NODE_ID=prod-node-1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATA_PATH=/app/data/prod
+    volumes:
+      - ./data/prod:/app/data/prod
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - bluebinary-network
+
+  # Additional production node for load balancing
+  app-prod-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bluebinary-prod-2
+    ports:
+      - '3052:3051'
+    environment:
+      - NODE_ENV=prod
+      - PORT=3051
+      - NODE_ID=prod-node-2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DATA_PATH=/app/data/prod
+    volumes:
+      - ./data/prod:/app/data/prod
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - bluebinary-network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  bluebinary-network:
+    driver: bridge

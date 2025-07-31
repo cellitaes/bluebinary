@@ -1,0 +1,34 @@
+# Node modules (rebuild inside Docker)
+node_modules
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Logs
+logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and dev files
+*.test.js
+*.spec.js
+test/
+coverage/
+.vscode/
+.idea/
+
+# Git
+.git
+.gitignore
+
+# Docker-related
+Dockerfile
+.dockerignore
+
+# Environment files (optional; don't exclude if needed inside the container)
+.env
+.env.local
+.env.*.local
