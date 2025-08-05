@@ -16,12 +16,14 @@ export type Config = z.infer<typeof ConfigSchema>;
 export default (envs: unknown): Config => {
   const config = ConfigSchema.parse(envs);
 
-  if (config.NODE_ENV === 'dev') {
-    config.PORT = config.PORT || 3050;
-    config.DATA_PATH = './data/dev';
-  } else {
-    config.PORT = config.PORT || 3051;
-    config.DATA_PATH = './data/prod';
+  if (!process.env.DATA_PATH) {
+    if (config.NODE_ENV === 'dev') {
+      config.PORT = config.PORT || 3050;
+      config.DATA_PATH = './data/dev';
+    } else {
+      config.PORT = config.PORT || 3051;
+      config.DATA_PATH = './data/prod';
+    }
   }
 
   if (!config.NODE_ID) {

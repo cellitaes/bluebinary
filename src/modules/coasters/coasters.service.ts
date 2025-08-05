@@ -18,7 +18,6 @@ export class CoastersService {
     private storageService: JsonStorageService,
     private capacityCalculator: CapacityCalculatorService,
     private redisService: RedisService,
-
     private logger: CustomLoggerService,
   ) {
     this.nodeId = this.configService.getOrThrow('NODE_ID');
@@ -250,7 +249,9 @@ export class CoastersService {
     };
   }
 
-  private async publishSyncEvent(operation: string, entityType: string, entityId: string, data: any): Promise<void> {
+  private async publishSyncEvent(operation: 'CREATE' | 'UPDATE' | 'DELETE', entityType: 'coaster' | 'wagon', entityId: string, data: any): Promise<void> {
+    const currentVersion = await this.redisService.getEntityVersion(entityType, entityId);
+
     const syncEvent = {
       eventId: uuidv4(),
       nodeId: this.nodeId,
@@ -259,9 +260,13 @@ export class CoastersService {
       entityType,
       entityId,
       data,
-      version: 1,
+      version: currentVersion,
     };
 
-    await this.redisService.publishSyncEvent(syncEvent);
+    const submitted = await this.redisService.submitChangeToLeader(syncEvent);
+
+    if (!submitted) {
+      this.logger.warn(`Failed to submit ${operation} ${entityType} ${entityId} to leader`, 'CoasterService');
+    }
   }
 }

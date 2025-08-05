@@ -199,6 +199,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (!this.isConnected) return;
 
     try {
+      // Store event with unique key for processing tracking
+      const eventKey = `sync_event:${event.eventId}`;
+      await this.client.setEx(eventKey, 3600, JSON.stringify(event)); // Expire after 1 hour
+
       await this.client.lPush('sync_events', JSON.stringify(event));
       await this.client.lTrim('sync_events', 0, 999);
       this.logger.logDistributedEvent('SYNC_EVENT_PUBLISHED', event.nodeId, event);
@@ -215,6 +219,92 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return events.map((event) => JSON.parse(event) as SyncEvent);
     } catch (error) {
       this.logger.error('Failed to get sync events', error.stack, 'RedisService');
+      return [];
+    }
+  }
+
+  public async markEventProcessed(eventId: string, nodeId: string): Promise<void> {
+    if (!this.isConnected) return;
+
+    try {
+      const eventKey = `sync_event:${eventId}`;
+      const eventData = await this.client.get(eventKey);
+
+      if (eventData) {
+        const event = JSON.parse(eventData) as SyncEvent;
+        if (!event.processedBy) {
+          event.processedBy = [];
+        }
+
+        if (!event.processedBy.includes(nodeId)) {
+          event.processedBy.push(nodeId);
+          await this.client.setEx(eventKey, 3600, JSON.stringify(event));
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to mark event as processed', error.stack, 'RedisService');
+    }
+  }
+
+  public async getEntityVersion(entityType: string, entityId: string): Promise<number> {
+    if (!this.isConnected) return 1;
+
+    try {
+      const versionKey = `version:${entityType}:${entityId}`;
+      const version = await this.client.get(versionKey);
+      return version ? parseInt(version, 10) : 1;
+    } catch (error) {
+      this.logger.error('Failed to get entity version', error.stack, 'RedisService');
+      return 1;
+    }
+  }
+
+  public async incrementEntityVersion(entityType: string, entityId: string): Promise<number> {
+    if (!this.isConnected) return 1;
+
+    try {
+      const versionKey = `version:${entityType}:${entityId}`;
+      const newVersion = await this.client.incr(versionKey);
+      await this.client.expire(versionKey, 86400); // Expire after 24 hours
+      return newVersion;
+    } catch (error) {
+      this.logger.error('Failed to increment entity version', error.stack, 'RedisService');
+      return 1;
+    }
+  }
+
+  public async submitChangeToLeader(event: SyncEvent): Promise<boolean> {
+    if (!this.isConnected) return false;
+
+    try {
+      const leader = await this.getCurrentLeader();
+      if (!leader) {
+        await this.publishSyncEvent(event);
+        return true;
+      }
+
+      await this.client.lPush(`leader_queue:${leader}`, JSON.stringify(event));
+      await this.client.lTrim(`leader_queue:${leader}`, 0, 999);
+
+      this.logger.logDistributedEvent('CHANGE_SUBMITTED_TO_LEADER', event.nodeId, { leader, eventId: event.eventId });
+      return true;
+    } catch (error) {
+      this.logger.error('Failed to submit change to leader', error.stack, 'RedisService');
+      return false;
+    }
+  }
+
+  public async getLeaderQueue(leaderId: string, count = 10): Promise<SyncEvent[]> {
+    if (!this.isConnected) return [];
+
+    try {
+      const events = await this.client.lRange(`leader_queue:${leaderId}`, 0, count - 1);
+      if (events.length > 0) {
+        await this.client.lTrim(`leader_queue:${leaderId}`, events.length, -1);
+      }
+      return events.map((event) => JSON.parse(event) as SyncEvent);
+    } catch (error) {
+      this.logger.error('Failed to get leader queue', error.stack, 'RedisService');
       return [];
     }
   }

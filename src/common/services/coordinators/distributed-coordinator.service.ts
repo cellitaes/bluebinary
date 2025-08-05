@@ -17,6 +17,8 @@ export class DistributedCoordinatorService implements OnModuleInit, OnModuleDest
   private heartbeatInterval: NodeJS.Timeout;
   private leadershipInterval: NodeJS.Timeout;
   private syncInterval: NodeJS.Timeout;
+  private leaderProcessingInterval: NodeJS.Timeout;
+  private lastSyncTimestamp: Date = new Date(0);
 
   constructor(
     private configService: ConfigService<Config>,
@@ -42,6 +44,7 @@ export class DistributedCoordinatorService implements OnModuleInit, OnModuleDest
       void this.heartbeatJob();
       void this.leadershipManagementJob();
       void this.syncProcessingJob();
+      void this.leaderProcessingJob();
 
       this.isInitialized = true;
       this.logger.log(`Distributed coordinator initialized for node ${this.nodeId}`, DistributedCoordinatorService.name);
@@ -59,6 +62,9 @@ export class DistributedCoordinatorService implements OnModuleInit, OnModuleDest
     }
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
+    }
+    if (this.leaderProcessingInterval) {
+      clearInterval(this.leaderProcessingInterval);
     }
 
     await this.redisService.removeNode(this.nodeId);
@@ -114,9 +120,22 @@ export class DistributedCoordinatorService implements OnModuleInit, OnModuleDest
   @Cron('*/5 * * * * *')
   private async syncProcessingJob(): Promise<void> {
     try {
-      await this.processSyncEvents();
+      if (!this.isLeader) {
+        await this.processSyncEvents();
+      }
     } catch (error) {
       this.logger.error('Sync processing failed', error.stack, DistributedCoordinatorService.name);
+    }
+  }
+
+  @Cron('*/3 * * * * *')
+  private async leaderProcessingJob(): Promise<void> {
+    try {
+      if (this.isLeader) {
+        await this.processLeaderQueue();
+      }
+    } catch (error) {
+      this.logger.error('Leader processing failed', error.stack, DistributedCoordinatorService.name);
     }
   }
 
@@ -141,12 +160,70 @@ export class DistributedCoordinatorService implements OnModuleInit, OnModuleDest
         continue;
       }
 
+      if (event.timestamp <= this.lastSyncTimestamp) {
+        continue;
+      }
+
+      if (event.processedBy && event.processedBy.includes(this.nodeId)) {
+        continue;
+      }
+
       try {
         await this.applySyncEvent(event);
+        await this.redisService.markEventProcessed(event.eventId, this.nodeId);
+        this.lastSyncTimestamp = event.timestamp;
         this.logger.debug(`Applied sync event: ${event.operation} ${event.entityType} ${event.entityId}`, DistributedCoordinatorService.name);
       } catch (error) {
         this.logger.error(`Failed to apply sync event: ${event.eventId}`, error.stack, DistributedCoordinatorService.name);
       }
+    }
+  }
+
+  private async processLeaderQueue(): Promise<void> {
+    const events = await this.redisService.getLeaderQueue(this.nodeId, 10);
+
+    for (const event of events) {
+      try {
+        const resolvedEvent = await this.resolveConflicts(event);
+
+        if (resolvedEvent) {
+          await this.redisService.publishSyncEvent(resolvedEvent);
+          this.logger.debug(`Leader processed and broadcasted: ${resolvedEvent.operation} ${resolvedEvent.entityType} ${resolvedEvent.entityId}`, DistributedCoordinatorService.name);
+        }
+      } catch (error) {
+        this.logger.error(`Leader failed to process event: ${event.eventId}`, error.stack, DistributedCoordinatorService.name);
+      }
+    }
+  }
+
+  private async resolveConflicts(event: SyncEvent): Promise<SyncEvent | null> {
+    try {
+      const currentVersion = await this.redisService.getEntityVersion(event.entityType, event.entityId);
+
+      if (event.operation === 'DELETE') {
+        const newVersion = await this.redisService.incrementEntityVersion(event.entityType, event.entityId);
+        return {
+          ...event,
+          version: newVersion,
+          timestamp: new Date(),
+        };
+      }
+
+      if (event.version < currentVersion) {
+        this.logger.warn(`Version conflict detected for ${event.entityType}:${event.entityId}. Current: ${currentVersion}, Incoming: ${event.version}`, DistributedCoordinatorService.name);
+
+        return null;
+      }
+
+      const newVersion = await this.redisService.incrementEntityVersion(event.entityType, event.entityId);
+      return {
+        ...event,
+        version: newVersion,
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to resolve conflicts for event: ${event.eventId}`, error.stack, DistributedCoordinatorService.name);
+      return null;
     }
   }
 

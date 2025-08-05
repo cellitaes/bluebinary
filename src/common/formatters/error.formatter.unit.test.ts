@@ -1,21 +1,21 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-import { ErrorCodes } from "../../constants";
+import { ErrorCodes } from '../../constants';
 
-import { validateSchema, formatZodError } from "./error.formatter";
+import { validateSchema, formatZodError } from './error.formatter';
 
-describe("error formatter", () => {
-  describe("validateSchema", () => {
+describe('error formatter', () => {
+  describe('validateSchema', () => {
     const testSchema = z.object({
       id: z.number(),
       name: z.string(),
       optionalField: z.string().optional(),
     });
 
-    it("should return success when data is valid", () => {
+    it('should return success when data is valid', () => {
       const validData = {
         id: 1,
-        name: "Test",
+        name: 'Test',
       };
 
       const result = validateSchema(testSchema, validData);
@@ -26,9 +26,9 @@ describe("error formatter", () => {
       }
     });
 
-    it("should return failure when data is invalid", () => {
+    it('should return failure when data is invalid', () => {
       const invalidData = {
-        id: "not-a-number",
+        id: 'not-a-number',
         name: 123,
       };
 
@@ -37,30 +37,24 @@ describe("error formatter", () => {
       expect(result.isSuccess).toBe(false);
       if (!result.isSuccess) {
         expect(result.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
-        expect(result.error.message).toMatch(
-          /id: Expected number, received string/
-        );
-        expect(result.error.message).toMatch(
-          /name: Expected string, received number/
-        );
+        expect(result.error.message).toMatch(/id: Expected number, received string/);
+        expect(result.error.message).toMatch(/name: Expected string, received number/);
       }
     });
 
-    it("should include (root) in error message when path is empty", () => {
+    it('should include (root) in error message when path is empty', () => {
       const rootSchema = z.string();
-      const result = validateSchema(rootSchema, 123);
+      const result = validateSchema(rootSchema, 123); // invalid: should be string
 
       expect(result.isSuccess).toBe(false);
       if (!result.isSuccess) {
-        expect(result.error.message).toMatch(
-          /\(root\): Expected string, received number/
-        );
+        expect(result.error.message).toMatch(/\(root\): Expected string, received number/);
       }
     });
   });
 
-  describe("formatZodError", () => {
-    it("should format nested ZodError messages correctly", () => {
+  describe('formatZodError', () => {
+    it('should format nested ZodError messages correctly', () => {
       const nestedSchema = z.object({
         user: z.object({
           email: z.string().email(),
@@ -68,7 +62,7 @@ describe("error formatter", () => {
       });
 
       const result = nestedSchema.safeParse({
-        user: { email: "invalid-email" },
+        user: { email: 'invalid-email' },
       });
 
       expect(result.success).toBe(false);

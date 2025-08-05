@@ -12,6 +12,7 @@ import configuration from './config';
 import { CoastersController } from './modules/coasters/coasters.controller';
 import { CoastersModule } from './modules/coasters/coasters.module';
 import { CoastersService } from './modules/coasters/coasters.service';
+import { SyncModule } from './modules/sync/sync.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CoastersService } from './modules/coasters/coasters.service';
     }),
     ScheduleModule.forRoot(),
     CoastersModule,
+    SyncModule,
     LoggerModule,
     StoragesModule,
     StatisticsModule,

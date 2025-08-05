@@ -57,7 +57,6 @@ export const CoasterSchema = z.object({
   trackLength: z.number().positive(),
   timeFrom: timeSchema,
   timeTo: timeSchema,
-  // wagons: z.array(z.string().uuid()).default([]),
   createdAt: z.date(),
   updatedAt: z.date(),
   nodeId: z.string(),

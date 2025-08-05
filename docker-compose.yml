@@ -76,9 +76,9 @@ services:
       - NODE_ID=prod-node-2
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - DATA_PATH=/app/data/prod
+      - DATA_PATH=/app/data/prod-node-2
     volumes:
-      - ./data/prod:/app/data/prod
+      - ./data/prod-node-2:/app/data/prod-node-2
       - ./logs:/app/logs
     depends_on:
       - redis

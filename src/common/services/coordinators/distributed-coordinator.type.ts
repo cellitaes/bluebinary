@@ -17,4 +17,12 @@ export interface SyncEvent {
   entityId: string;
   data: any;
   version: number;
+  processedBy?: string[];
+}
+
+export interface ConflictResolution {
+  winningVersion: number;
+  winningNodeId: string;
+  conflictReason: 'version_conflict' | 'concurrent_update';
+  resolvedAt: Date;
 }
